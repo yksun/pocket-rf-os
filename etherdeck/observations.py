@@ -73,6 +73,15 @@ def _text(value, limit):
     return " ".join(value.split())[:limit] if isinstance(value, str) else ""
 
 
+def alert_text(alert):
+    sections = []
+    for field, title in (("headline", "标题"), ("description", "警报正文"), ("instruction", "行动指引")):
+        text = _text(alert.get(field), 4096)
+        if text:
+            sections.append(title + "\n" + text)
+    return "\n\n".join(sections)
+
+
 def alert_records(data, now):
     if not isinstance(data, dict) or not isinstance(data.get("features"), list):
         raise ValueError("Unexpected NWS response")
@@ -86,7 +95,10 @@ def alert_records(data, now):
         if p.get("status") == "Actual" and ident and event and expires > now:
             alerts[ident] = {
                 "event": event, "severity": _text(p.get("severity"), 24),
-                "area": _text(p.get("areaDesc"), 140),
+                "area": _text(p.get("areaDesc"), 240),
+                "headline": _text(p.get("headline"), 300),
+                "description": _text(p.get("description"), 4096),
+                "instruction": _text(p.get("instruction"), 4096),
                 "sent": parse_time(p.get("sent")), "expires": expires,
             }
     severity = {"Extreme": 0, "Severe": 1, "Moderate": 2, "Minor": 3}

@@ -49,9 +49,9 @@ class ProtocolTests(unittest.TestCase):
     def test_update_checks_target_and_restart_and_transfers_all_bytes(self):
         data = bytes(range(255)) * 5
         digest = hashlib.sha256(data).hexdigest()
-        old = Mock(version="0.1.0", identity="bridge-a")
+        old = Mock(profile=bridge.PROFILE, version="0.1.0", identity="bridge-a")
         old.ask.side_effect = lambda command, **_: "reboot" if command == "UPDATE END" else ""
-        new = Mock(version="0.2.0", identity="bridge-a")
+        new = Mock(profile=bridge.PROFILE, version="0.2.0", identity="bridge-a")
         contexts = [Mock(), Mock()]
         for mgr, board in zip(contexts, (old, new)):
             mgr.__enter__ = Mock(return_value=board)
@@ -69,7 +69,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(progress[-1], 100)
 
     def test_interrupted_update_cancels_without_commit(self):
-        link = Mock(version="0.1.0", identity="bridge-a")
+        link = Mock(profile=bridge.PROFILE, version="0.1.0", identity="bridge-a")
         link.ask.side_effect = ["", bridge.BridgeError("write timeout"), ""]
         mgr = Mock()
         mgr.__enter__ = Mock(return_value=link)
@@ -82,7 +82,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_wrong_device_before_update(self):
         mgr = Mock()
-        mgr.__enter__ = Mock(return_value=Mock(identity="other", version="0.1.0"))
+        mgr.__enter__ = Mock(return_value=Mock(profile=bridge.PROFILE, identity="other", version="0.1.0"))
         mgr.__exit__ = Mock(return_value=False)
         with (patch.object(bridge, "pack", return_value=("0.2.0", b"data", "digest")),
               patch.object(bridge, "Bridge", return_value=mgr),
@@ -104,6 +104,10 @@ class InterfaceTests(unittest.TestCase):
         keys = keypad.events([(389, 1), (45, 1), (45, 0), (389, 0)])
         for key in keys:
             app.key(key, 1)
+        self.assertEqual(app.home, 3)
+        app.key("RIGHT", 1.1)
+        self.assertEqual(app.home, 4)
+        app.key("UP", 1.2)
         self.assertEqual(app.home, 1)
         app.key("TAB_DOWN", 2)
         app.key("TAB_UP", 2.1)

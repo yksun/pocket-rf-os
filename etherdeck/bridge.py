@@ -9,6 +9,8 @@ import serial
 from serial.tools import list_ports
 
 PROFILE = "joseph-adv"
+TOP_PROFILE = "zero-top-adapter"
+PROFILES = (PROFILE, TOP_PROFILE)
 FIRMWARE = Path(__file__).resolve().parent.parent / "bridge-firmware"
 VERSION_RE = re.compile(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})")
 
@@ -24,11 +26,14 @@ def version_tuple(version):
     return tuple(map(int, match.groups()))
 
 
-def pack():
+def pack(profile=PROFILE):
+    if profile not in PROFILES:
+        raise BridgeError("Unknown bridge profile")
+    directory = FIRMWARE if profile == PROFILE else FIRMWARE / profile
     try:
-        metadata = json.loads((FIRMWARE / "manifest.json").read_text())
-        image = (FIRMWARE / "firmware.bin").read_bytes()
-        if metadata["profile"] != PROFILE or not 0 < len(image) <= 0x330000:
+        metadata = json.loads((directory / "manifest.json").read_text())
+        image = (directory / "firmware.bin").read_bytes()
+        if metadata["profile"] != profile or not 0 < len(image) <= 0x330000:
             raise ValueError("profile or size")
         version_tuple(metadata["version"])
         digest = hashlib.sha256(image).hexdigest()
@@ -57,7 +62,7 @@ class Bridge:
                                     write_timeout=1, exclusive=True)
         try:
             self.serial.reset_input_buffer()
-            self.version, self.identity = self.hello()
+            self.version, self.identity, self.profile = self.hello()
         except BaseException:
             self.serial.close()
             raise
@@ -85,11 +90,11 @@ class Bridge:
 
     def hello(self):
         fields = self.ask("HELLO").split()
-        if (len(fields) != 4 or fields[:2] != ["EtherDeck", PROFILE]
+        if (len(fields) != 4 or fields[0] != "EtherDeck" or fields[1] not in PROFILES
                 or not re.fullmatch(r"[0-9a-f]{12}", fields[3])):
             raise BridgeError("Wrong USB firmware or board")
         version_tuple(fields[2])
-        return fields[2], fields[3]
+        return fields[2], fields[3], fields[1]
 
     def close(self):
         self.serial.close()
@@ -112,12 +117,12 @@ def radio(port, name, action, profile, message=""):
         return link.ask(request, timeout=7)
 
 
-def update(port, identity, current, progress):
-    version, image, digest = pack()
+def update(port, identity, current, progress, *, profile=PROFILE):
+    version, image, digest = pack(profile)
     if version_tuple(version) <= version_tuple(current):
         raise BridgeError("Bridge is up to date")
     with Bridge(port) as link:
-        if (link.identity, link.version) != (identity, current):
+        if (link.identity, link.version, link.profile) != (identity, current, profile):
             raise BridgeError("USB bridge changed")
         link.ask(f"UPDATE BEGIN {len(image)} {digest}", timeout=8)
         try:
@@ -138,7 +143,7 @@ def update(port, identity, current, progress):
     while time.monotonic() < deadline:
         try:
             with Bridge(port) as link:
-                if link.identity == identity and link.version == version:
+                if (link.identity, link.version, link.profile) == (identity, version, profile):
                     return version
         except (BridgeError, OSError, serial.SerialException):
             pass

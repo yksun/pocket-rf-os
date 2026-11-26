@@ -27,9 +27,8 @@ def main():
             print("JosephCGS ADV board: wiring diagnosis only")
             return 0
         if args.check:
-            print(f"Bundled {bridge.PROFILE} firmware {bridge.pack()[0]}")
             with bridge.Bridge(args.port) as usb:
-                print(f"{usb.port}: EtherDeck bridge {usb.version}")
+                print(f"{usb.port}: {usb.profile} {usb.version}; bundled {bridge.pack(usb.profile)[0]}")
             return 0
         from .app import App
 

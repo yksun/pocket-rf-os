@@ -12,7 +12,7 @@ import time
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from . import bridge, hat, observations
+from . import bridge, device, hat, observations
 from .keys import Keyboard
 
 NRF_CHANNELS = range(2, 81)
@@ -56,6 +56,47 @@ def font(size):
     return ImageFont.load_default(size=size)
 
 
+@lru_cache(maxsize=256)
+def text_tile(value, size, limit):
+    face = font(size)
+    if face.getlength(value) > limit:
+        while value and face.getlength(value + "…") > limit:
+            value = value[:-1]
+        value += "…"
+    bounds = face.getbbox(value, anchor="lt")
+    tile = Image.new("L", (max(1, bounds[2]), max(1, bounds[3])))
+    ImageDraw.Draw(tile).text((0, 0), value, font=face, fill=255, anchor="lt")
+    return tile
+
+
+def wrap_alert(body):
+    face = font(11)
+    lines = []
+    for paragraph in body.split("\n"):
+        while face.getlength(paragraph) > 296:
+            lo, hi = 1, len(paragraph)
+            while lo + 1 < hi:
+                mid = (lo + hi) // 2
+                if face.getlength(paragraph[:mid]) <= 296:
+                    lo = mid
+                else:
+                    hi = mid
+            split = paragraph.rfind(" ", 0, lo + 1)
+            end = split if split > 0 else lo
+            lines.append(paragraph[:end])
+            paragraph = paragraph[end:].lstrip()
+        lines.append(paragraph)
+    return lines
+
+
+@lru_cache(maxsize=2)
+def bundled_version(profile):
+    try:
+        return bridge.pack(profile)[0]
+    except bridge.BridgeError:
+        return None
+
+
 def result(name, action, data):
     fields = data.split()
     if action == "PROBE" and not data:
@@ -95,6 +136,12 @@ class App:
         self.port = port
         self.use_usb = usb
         self.cap_choice = 0
+        self.bridge_profile = bridge.PROFILE
+        self.top_requested = False
+        self.system_info = None
+        self.integrity = None
+        self.alert_scroll = 0
+        self.alert_lines = []
         self.launch_target = None
         self.hat_data = None
         self.storage = storage or observations.state_dir()
@@ -151,7 +198,9 @@ class App:
     def discover(self):
         def check():
             with bridge.Bridge(self.port) as link:
-                return link.port, link.identity, link.version
+                if self.top_requested and link.profile != bridge.TOP_PROFILE:
+                    raise bridge.BridgeError("连接的设备不是顶部适配器")
+                return link.port, link.identity, link.version, link.profile
 
         self.start("discover", check)
 
@@ -232,6 +281,12 @@ class App:
             if task == "save":
                 self.notice = "已保存到信号历史" if status == "done" else "保存失败"
                 continue
+            if task == "system":
+                self.system_info = value if status == "done" else None
+                continue
+            if task == "integrity":
+                self.integrity = value if status == "done" else ("校验不可用", str(value))
+                continue
             if task == "hat":
                 self.hat_data = value if status == "done" else None
                 continue
@@ -250,9 +305,16 @@ class App:
                     self.notice = "刷新失败，请核对网络"
                 continue
             if task == "discover":
-                self.usb = value if status == "done" else None
+                self.usb = value[:3] if status == "done" else None
+                if self.usb:
+                    self.bridge_profile = value[3]
                 self.usb_status = f"USB  ·  {value[2]}" if self.usb else "USB 未就绪"
                 self.usb_detail = "" if self.usb else value
+                if self.top_requested and not self.usb:
+                    self.use_usb = self.top_requested = False
+                    self.usb_status = "顶部 CAP"
+                    self.go("joseph")
+                    self.notice = "适配器未识别，请检查固件和连线"
             elif status == "error":
                 self.view = ("操作未完成", [value], [])
                 self.go("firmware-result" if task == "update" else "result")
@@ -304,7 +366,7 @@ class App:
             if key == "ENTER" and self.area in observations.STATES:
                 self.go("alerts")
                 self.refresh_alerts()
-            elif key == "BACKSPACE":
+            elif key in ("BACKSPACE", "DELETE"):
                 self.area = self.area[:-1]
             elif len(key) == 1 and key.isascii() and key.isalpha() and len(self.area) < 2:
                 self.area += key.upper()
@@ -312,7 +374,7 @@ class App:
         elif self.page == "compose":
             if key == "ENTER" and self.message.strip():
                 self.go("send")
-            elif key == "BACKSPACE":
+            elif key in ("BACKSPACE", "DELETE"):
                 self.message = self.message[:-1]
             elif len(key) == 1 and 32 <= ord(key) <= 126 and len(self.message) < 24:
                 self.message += key
@@ -323,13 +385,12 @@ class App:
     def navigate(self, key):
         step = 1 if key in ("down", "x") else -1 if key in ("up", "f") else 0
         if self.page == "home":
-            if step:
-                self.home = (self.home + step) % 7
+            row, col = divmod(self.home, 3)
+            move_x = (1 if key in ("right", "c") else -1 if key in ("left", "z") else 0)
+            if step or move_x:
+                self.home = min(2, max(0, row + step)) * 3 + min(2, max(0, col + move_x))
                 self.dirty = True
-            elif key in ("left", "right", "z", "c"):
-                self.home = (self.home + (3 if key in ("right", "c") else -3)) % 7
-                self.dirty = True
-            elif key in ("1", "2", "3", "4", "5", "6", "7", "enter", "u", "h", "a", "d"):
+            elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "enter", "u", "h", "a", "d"):
                 shortcuts = {"h": 3, "a": 4, "d": 5, "u": 6}
                 if key in shortcuts:
                     self.home = shortcuts[key]
@@ -358,6 +419,12 @@ class App:
                     else:
                         self.go("hat")
                         self.start("hat", hat.status)
+                elif self.home == 7:
+                    self.go("system")
+                    self.start("system", device.health)
+                elif self.home == 8:
+                    self.go("integrity")
+                    self.start("integrity", device.package_integrity)
                 else:
                     self.go("firmware" if self.use_usb else "cap-help")
                     if self.use_usb:
@@ -383,6 +450,19 @@ class App:
             else:
                 self.go("cap")
                 self.notice = "官方应用不可用"
+        elif self.page == "joseph" and key == "b":
+            if self.hat_data and self.hat_data["mode"] == "USB":
+                self.use_usb = self.top_requested = True
+                self.bridge_profile = bridge.TOP_PROFILE
+                self.go("home")
+                self.discover()
+            else:
+                self.notice = "先将顶部接口切到 USB 模式"
+                self.dirty = True
+        elif self.page == "system" and key == "r":
+            self.start("system", device.health)
+        elif self.page == "integrity" and key == "r":
+            self.start("integrity", device.package_integrity)
         elif self.page in ("hat", "joseph") and key == "r":
             self.start("hat", hat.status)
         elif self.page == "radio":
@@ -422,11 +502,22 @@ class App:
                 self.dirty = True
             elif key == "enter" and items:
                 self.go("history-detail" if self.page == "history" else "alert-detail")
+                if self.page == "alert-detail":
+                    self.alert_scroll = 0
+                    item = items[self.list_index]
+                    issued = observations.display_time(item["sent"]) if item["sent"] else "未知"
+                    body = (f"发布 {issued}\n范围 {item['area']}\n\n" +
+                            (observations.alert_text(item) or "这份快照没有正文。返回后按 R 重新获取。"))
+                    self.alert_lines = wrap_alert(body)
             elif self.page == "alerts" and key == "r":
                 self.refresh_alerts()
             elif self.page == "alerts" and key == "c":
                 self.area = ""
                 self.go("area")
+        elif self.page == "alert-detail" and (step or key in ("left", "right", "z", "c")):
+            delta = step or (5 if key in ("right", "c") else -5)
+            self.alert_scroll = min(max(0, len(self.alert_lines) - 5), max(0, self.alert_scroll + delta))
+            self.dirty = True
         elif self.page == "hardware" and key == "r":
             self.diagnose()
         elif self.page == "send" and key == "y":
@@ -438,9 +529,11 @@ class App:
                 self.go("confirm-update")
         elif self.page == "confirm-update" and key == "y":
             args = self.usb
+            profile = self.bridge_profile
             self.go("updating")
             self.start("update", lambda: bridge.update(
-                *args, lambda p: self.reply.put(("progress", p)) if p % 2 == 0 else None))
+                *args, lambda p: self.reply.put(("progress", p)) if p % 2 == 0 else None,
+                profile=profile))
 
     def diagnose(self):
         self.hardware = []
@@ -461,10 +554,7 @@ class App:
         self.start("hardware", check)
 
     def bundled_version(self):
-        try:
-            return bridge.pack()[0]
-        except bridge.BridgeError:
-            return None
+        return bundled_version(self.bridge_profile)
 
     def update_available(self):
         bundled = self.bundled_version()
@@ -476,12 +566,8 @@ class App:
         draw = ImageDraw.Draw(im)
 
         def text(x, y, value, size=13, color=TEXT, right=308):
-            face = font(size)
-            if draw.textlength(value, font=face) > right - x:
-                while value and draw.textlength(value + "…", font=face) > right - x:
-                    value = value[:-1]
-                value += "…"
-            draw.text((x, y), value, font=face, fill=color, anchor="lt")
+            tile = text_tile(value, size, right - x)
+            im.paste(color, (x, y, x + tile.width, y + tile.height), tile)
 
         def cards(labels):
             for i, (label, detail, tint) in enumerate(labels):
@@ -518,9 +604,10 @@ class App:
                 ("JosephCGS", "3  三合一诊断", AMBER)]
             cards(radios + [("信号历史", "4  RF", TEAL), ("气象告警", "5  NWS", TEAL),
                             ("硬件检测", "6  " + ("USB" if self.use_usb else "SPI"), TEAL),
-                            ("桥接固件", "7  OTA", TEAL) if self.use_usb else ("使用说明", "7  CAP", TEAL)])
-            footer = ("1–7 打开    F/X 选择    R 重连    长按 ESC 退出" if self.use_usb else
-                      "1–7 打开    F/X 选择    OK 确认    长按 ESC 退出")
+                            ("桥接固件", "7  OTA", TEAL) if self.use_usb else ("使用说明", "7  CAP", TEAL),
+                            ("设备状态", "8  日常", TEAL), ("完整性", "9  诊断", AMBER)])
+            footer = ("1–9 打开    F/X 选择    R 重连    长按 ESC 退出" if self.use_usb else
+                      "1–9 打开    F/X 上下  Z/C 左右    长按 ESC 退出")
         elif self.page in ("cap", "cap-confirm"):
             label, detail, actions = hat.CAPS[self.selected]
             text(12, 8, label, 20, TEAL)
@@ -548,8 +635,29 @@ class App:
                 lines_at(40, stats)
                 if self.page == "joseph":
                     text(12, 104, "nRF24 占用系统 I²C，CC1101 片选接 UART。", 12, AMBER)
-                    text(12, 123, "共用 SPI 的射频操作暂停，需改线。", 12, AMBER)
-                footer = "R 刷新    ESC 返回"
+                    text(12, 123, "有源分接板可从顶部 USB 接入。", 12, AMBER)
+                footer = ("R 刷新    B 连接有源转接器    ESC 返回" if self.page == "joseph" else
+                          "R 刷新    ESC 返回")
+                if self.notice:
+                    footer = self.notice
+        elif self.page == "system":
+            text(12, 8, "设备状态", 20, TEAL)
+            stats = self.system_info
+            if stats:
+                available = stats["available"]
+                mem = f"{available // 1024}/{stats['total'] // 1024} MiB" if available and stats["total"] else "未知"
+                frequency = f"{stats['mhz'] / 1000:.0f} MHz" if stats["mhz"] else "未知"
+                temperature = f"{stats['temperature'] / 1000:.1f} °C" if stats["temperature"] is not None else "未知"
+                lines_at(37, [stats["time"], f"CPU {frequency}  ·  {temperature}  ·  负载 {stats['load']:.2f}",
+                              f"可用内存 {mem}", f"存储剩余 {stats['disk'] / 2**30:.1f} GiB",
+                              f"电量 {self.battery}%" if self.battery is not None else "电量未知"])
+            else:
+                text(12, 40, "正在读取设备状态…" if self.job else "设备状态不可用", 13, DIM)
+            footer = "R 刷新    ESC 返回"
+        elif self.page == "integrity":
+            text(12, 8, "应用文件完整性", 20, TEAL)
+            lines_at(42, self.integrity or ("正在校验…",))
+            footer = "R 重新校验    ESC 返回"
         elif self.page == "radio":
             text(12, 8, title, 20, color)
             text(135, 12, "<  " + profile + "  >", 14, TEXT)
@@ -620,11 +728,13 @@ class App:
                 footer = "OK 请求    DEL 删除    ESC 返回"
             elif self.page == "alert-detail":
                 item = self.alerts["alerts"][self.list_index]
-                text(12, 37, item["event"], 15)
+                text(12, 32, item["event"], 14)
                 expired = "  已过期" if item["expires"] <= time.time() else ""
-                lines_at(59, [f"{self.alert_source}  ·  {item['severity'] or 'Unknown'}{expired}",
-                              item["area"], f"发布  {observations.display_time(item['sent'])}" if item["sent"] else "发布时间未知",
-                              f"有效至  {observations.display_time(item['expires'])}"])
+                text(12, 50, f"{self.alert_source}  {item['severity']}  至 {observations.display_time(item['expires'])}{expired}", 11, AMBER)
+                rows = self.alert_lines[self.alert_scroll:self.alert_scroll + 5]
+                for i, line in enumerate(rows):
+                    text(12, 67 + 14 * i, line, 11)
+                footer = f"F/X 滚动  Z/C 翻页  {self.alert_scroll + 1}/{len(self.alert_lines)}  ESC 返回"
             else:
                 footer = "R 刷新    C 地区    OK 详情    ESC 返回"
                 if self.alerts:
@@ -669,7 +779,7 @@ class App:
                         draw.rectangle((x, baseline - height, max(x, end - 1), baseline - 1), fill=color)
         else:
             text(12, 9, "桥接固件", 20, TEAL)
-            text(12, 37, "Cardputer ADV  /  JosephCGS 三合一板", 13, DIM)
+            text(12, 37, self.bridge_profile, 13, DIM)
             if self.page == "firmware":
                 text(12, 65, f"USB 版本  {self.usb[2] if self.usb else '未连接'}", 14)
                 bundled = self.bundled_version()

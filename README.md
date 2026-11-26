@@ -1,16 +1,16 @@
 # Pocket RF OS
 
-Pocket RF OS 是 CardputerZero 的 APPLaunch 应用。0.2.1 默认操作顶部 CAP 接口。
+Pocket RF OS 是 CardputerZero 的 APPLaunch 应用。0.3.0 默认操作顶部 CAP 接口。
 
 | 顶部板 | 主页入口 |
 | --- | --- |
 | M5Stack Cap CC1101（U219） | 1 → SubG Chat 或 NFC。调用已安装的原厂原生应用。 |
 | M5Stack Cap LoRa-1262（U214） | 2 → LoRa 或 GPS。调用已安装的原厂原生应用。 |
-| JosephCGS ADV 三合一板 | 3 → 接线诊断。原板与 Zero 有 I²C 和 UART 引脚冲突，运行射频功能需先重新布线。 |
+| JosephCGS ADV 三合一板 | 3 → 接线诊断 / 有源顶部转接。原 PCB 可保持原样，有源转接板需要实物验证。 |
 
 先关机，再更换顶部扩展板。启动原厂工具前确认机身上的板与选择一致。Pocket RF OS 使用原厂应用现有的启动权限和驱动，原厂工具退出后返回 APPLaunch。原厂工具及驱动请从 CardputerZero 软件商店或其发行页安装。 [U219 SubG Chat](https://github.com/CardputerZero/Cap-CC1101-SubG-Chat/releases) · [U214 LoRa](https://github.com/CardputerZero/Cap-LoRa-1262/releases)
 
-[顶部接口兼容性与实测引脚](docs/top-cap.md)
+[顶部接口兼容性与实测引脚](docs/top-cap.md) · [转接板针脚与原型](docs/adapter.md)
 
 ## 可选的 ADV USB 桥接模式
 
@@ -28,18 +28,18 @@ Pocket RF OS 是 CardputerZero 的 APPLaunch 应用。0.2.1 默认操作顶部 C
 
 USB 模式的三个模块都有「连续观测」。CC1101 和 nRF24 使用最近 20 帧画瀑布，LoRa 显示当前信号强度和信道活动。按 ESC 停止，按 S 保存最近一次测量到信号历史。历史保留最近 100 项，可以从主页用 **4** 浏览。
 
-主页 **5** 是 NWS 气象告警。按 C 输入美国州或地区代码，按 OK 查询。随后可以用 R 刷新。NET 表示当次请求成功，CACHE 表示从本地快照读取，超出 15 分钟会标记为旧。记录显示有效期，辅助查阅时请以官方通告为准。告警和历史存于 `$XDG_STATE_HOME/etherdeck`，默认是 `~/.local/state/etherdeck`。
+主页 **5** 是 NWS 气象告警。OK 打开范围、警报正文及行动指引，F/X 滚动、Z/C 翻页。主页 **8** 看设备负载、温度、内存、存储与电量，**9** 核对已安装程序的文件完整性。按 C 输入美国州或地区代码，按 OK 查询。随后可以用 R 刷新。NET 表示当次请求成功，CACHE 表示从本地快照读取，超出 15 分钟会标记为旧。记录显示有效期，辅助查阅时请以官方通告为准。告警和历史存于 `$XDG_STATE_HOME/etherdeck`，默认是 `~/.local/state/etherdeck`。
 
 [功能对照和硬件范围](docs/design.md) · [版本记录](CHANGELOG.md) · [许可证](THIRD_PARTY.md)
 
 ## 在 Micius 上安装
 
-从 [v0.2.1 Release](https://github.com/yksun/pocket-rf-os/releases/tag/v0.2.1) 下载 Debian 包。在能 SSH 到 Micius 的 Mac 上运行。Micius 重启后，先在机身上解锁，Tailscale 才会启动。
+从 [v0.3.0 Release](https://github.com/yksun/pocket-rf-os/releases/tag/v0.3.0) 下载 Debian 包。在能 SSH 到 Micius 的 Mac 上运行。Micius 重启后，先在机身上解锁，Tailscale 才会启动。
 
 ```bash
 stage=$(ssh micius 'd=$(mktemp -d /tmp/pocket-rf.XXXXXXXX) && chmod 755 "$d" && printf "%s" "$d"')
-scp etherdeck_0.2.1_all.deb "micius:$stage/" &&
-ssh -t micius "chmod 644 '$stage/etherdeck_0.2.1_all.deb' && sudo apt install '$stage/etherdeck_0.2.1_all.deb' && /usr/share/APPLaunch/bin/etherdeck --version && systemctl --user restart APPLaunch"
+scp etherdeck_0.3.0_all.deb "micius:$stage/" &&
+ssh -t micius "chmod 644 '$stage/etherdeck_0.3.0_all.deb' && sudo apt install '$stage/etherdeck_0.3.0_all.deb' && /usr/share/APPLaunch/bin/etherdeck --version && systemctl --user restart APPLaunch"
 ```
 
 启动器中选择 **Pocket RF OS**。默认显示顶部扩展板入口；可选 USB 模式须显式启动。
@@ -89,7 +89,7 @@ ssh -t micius "chmod 644 '$stage/etherdeck_0.2.1_all.deb' && sudo apt install '$
 
 ## 键位
 
-- **F / X** 或 **Fn+F / Fn+X** 上下选择，主页也可用 **1–7**。**OK** 打开或执行。
+- **F / X** 或 **Fn+F / Fn+X** 上下移动，**Z / C** 或 **Fn+Z / Fn+C** 在主页左右移动，主页也可用 **1–9**。**OK** 打开或执行。
 - **Z / C** 或 **Fn+Z / Fn+C** 调整频率或信道，**B** 切换 nRF24 速率或 LoRa 扩频因子。
 - **短按 ESC** 返回，**长按 ESC** 退出。TAB 后再按 OK 保留给 Micius 的锁屏操作。
 - **R** 在主页重连，**H** 查看信号历史，**A** 打开气象告警，**D** 查看当前接口状态。USB 模式下 **U** 打开桥接固件。

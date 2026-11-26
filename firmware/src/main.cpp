@@ -5,11 +5,22 @@
 #include <esp_ota_ops.h>
 #include <mbedtls/sha256.h>
 
-constexpr char VERSION[] = "0.2.0";
+constexpr char VERSION[] = "0.3.0";
+#ifdef POCKET_ZERO_ADAPTER
+constexpr char PROFILE[] = "zero-top-adapter";
+constexpr int CC_CS = 6, CC_IRQ = 7;
+constexpr int NRF_CS = 5, NRF_CE = 4;
+constexpr int LORA_CS = 8, LORA_IRQ = 10, LORA_RST = 9;
+constexpr int SPI_SCK = 11, SPI_MOSI = 12, SPI_MISO = 13;
+constexpr int CHIP_SELECTS[] = {CC_CS, NRF_CS, LORA_CS};
+#else
+constexpr char PROFILE[] = "joseph-adv";
+constexpr int SPI_SCK = 40, SPI_MOSI = 14, SPI_MISO = 39;
 constexpr int CC_CS = 15, CC_IRQ = 13;
 constexpr int NRF_CS = 9, NRF_CE = 8;
 constexpr int LORA_CS = 5, LORA_IRQ = 4, LORA_RST = 3;
 constexpr int CHIP_SELECTS[] = {CC_CS, NRF_CS, LORA_CS, 12, 1};
+#endif
 constexpr uint8_t ADDRESS[] = {'E', 'D', 'K', '0', '1'};
 constexpr uint8_t MAGIC[] = {'E', 'D', 'K', 1};
 constexpr unsigned PACKET = 29;
@@ -319,7 +330,7 @@ void command(char* line) {
     const char* name = strtok_r(nullptr, " ", &next);
     if (!prefix || strcmp(prefix, "EDK1") || !name) return;
     if (!strcmp(name, "HELLO")) {
-        Serial.printf("OK EtherDeck joseph-adv %s %012llx\n", VERSION,
+        Serial.printf("OK EtherDeck %s %s %012llx\n", PROFILE, VERSION,
                       (unsigned long long)ESP.getEfuseMac());
         return;
     }
@@ -352,7 +363,7 @@ void setup() {
     }
     pinMode(NRF_CE, OUTPUT);
     digitalWrite(NRF_CE, LOW);
-    SPI.begin(40, 39, 14, -1);
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, -1);
     Serial.setRxBufferSize(1536);
     Serial.setTxBufferSize(512);
     Serial.begin(115200);
