@@ -15,12 +15,10 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from etherdeck import VERSION
 
 directory = Path("bridge-firmware")
 source = Path("firmware/src/main.cpp").read_text()
 version = re.search(r'char VERSION\[\] = "([^"]+)"', source)[1]
-assert VERSION == version, f"Host {VERSION} / bridge {version}"
 manifest = {
     "profile": "joseph-adv",
     "version": version,

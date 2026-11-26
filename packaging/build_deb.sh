@@ -30,8 +30,8 @@ Suggests: esptool
 Section: electronics
 Priority: optional
 Description: Pocket RF OS RF module bench for CardputerZero
- Native APPLaunch interface for CC1101, nRF24L01+ and SX127x LoRa
- using the EtherDeck firmware on a USB-connected Cardputer ADV.
+ Launches native CC1101 and LoRa CAP tools and diagnoses the top port.
+ Supports an optional USB-connected Cardputer ADV radio bridge.
 CTL
 chmod 0644 "$stage/DEBIAN/control"
 mkdir -p dist

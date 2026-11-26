@@ -12,7 +12,7 @@ import time
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from . import bridge, observations
+from . import bridge, hat, observations
 from .keys import Keyboard
 
 NRF_CHANNELS = range(2, 81)
@@ -91,8 +91,12 @@ def result(name, action, data):
 
 
 class App:
-    def __init__(self, port=None, storage=None):
+    def __init__(self, port=None, storage=None, *, usb=False):
         self.port = port
+        self.use_usb = usb
+        self.cap_choice = 0
+        self.launch_target = None
+        self.hat_data = None
         self.storage = storage or observations.state_dir()
         self.history_file = self.storage / "rf-history.json"
         self.alert_file = self.storage / "nws-alerts.json"
@@ -115,7 +119,7 @@ class App:
         self.profiles = [1, len(NRF_CHANNELS), 0]
         self.message = ""
         self.usb = None
-        self.usb_status = "正在检查 USB"
+        self.usb_status = "正在检查 USB" if usb else "顶部 CAP"
         self.esc_down = self.tab_down = None
         self.esc_stopping_scan = False
         self.lock_until = 0
@@ -228,6 +232,9 @@ class App:
             if task == "save":
                 self.notice = "已保存到信号历史" if status == "done" else "保存失败"
                 continue
+            if task == "hat":
+                self.hat_data = value if status == "done" else None
+                continue
             if task == "hardware":
                 if status == "done":
                     self.hardware = value
@@ -284,7 +291,8 @@ class App:
                 parent = {"radio": "home", "result": "radio", "compose": "radio",
                           "send": "compose", "firmware": "home", "confirm-update": "firmware",
                           "firmware-result": "firmware", "live-result": "radio",
-                          "history-detail": "history", "alert-detail": "alerts", "area": "alerts"}
+                          "history-detail": "history", "alert-detail": "alerts", "area": "alerts",
+                          "cap-confirm": "cap", "cap": "home", "joseph": "home", "hat": "home"}
                 if self.page == "area" and self.alerts:
                     self.area = self.alerts["area"]
                 self.go(parent.get(self.page, "home"))
@@ -329,7 +337,14 @@ class App:
                     self.home = int(key) - 1
                 if self.home < 3:
                     self.selected, self.action = self.home, 0
-                    self.go("radio")
+                    if self.use_usb:
+                        self.go("radio")
+                    elif self.selected < 2:
+                        self.cap_choice = 0
+                        self.go("cap")
+                    else:
+                        self.go("joseph")
+                        self.start("hat", hat.status)
                 elif self.home == 3:
                     self.records = observations.history(self.history_file)
                     self.list_index = 0
@@ -337,13 +352,39 @@ class App:
                 elif self.home == 4:
                     self.open_alerts()
                 elif self.home == 5:
-                    self.go("hardware")
-                    self.diagnose()
+                    if self.use_usb:
+                        self.go("hardware")
+                        self.diagnose()
+                    else:
+                        self.go("hat")
+                        self.start("hat", hat.status)
                 else:
-                    self.go("firmware")
-                    self.discover()
-            elif key == "r":
+                    self.go("firmware" if self.use_usb else "cap-help")
+                    if self.use_usb:
+                        self.discover()
+            elif key == "r" and self.use_usb:
                 self.discover()
+        elif self.page == "cap":
+            if step:
+                self.cap_choice ^= 1
+                self.dirty = True
+            elif key == "enter":
+                command = hat.CAPS[self.selected][2][self.cap_choice][1]
+                if hat.available(command):
+                    self.go("cap-confirm")
+                else:
+                    self.notice = "请先安装对应的官方应用"
+                    self.dirty = True
+        elif self.page == "cap-confirm" and key == "y":
+            command = hat.CAPS[self.selected][2][self.cap_choice][1]
+            if hat.available(command):
+                self.launch_target = command
+                self.running = False
+            else:
+                self.go("cap")
+                self.notice = "官方应用不可用"
+        elif self.page in ("hat", "joseph") and key == "r":
+            self.start("hat", hat.status)
         elif self.page == "radio":
             if step:
                 self.action = (self.action + step) % len(ACTIONS)
@@ -471,12 +512,44 @@ class App:
             text(184, 13, self.usb_status, 11, DIM, 278)
             if self.battery is not None:
                 text(278, 13, f"{self.battery}%", 11, DIM)
-            cards([(label, f"{i + 1}  {band}", tint)
-                   for i, ((_, label, _, _, tint), band) in
-                   enumerate(zip(RADIOS, ("Sub-GHz", "2.4 GHz", "SX127x")))] +
-                  [("信号历史", "4  RF", TEAL), ("气象告警", "5  NWS", TEAL),
-                   ("硬件检测", "6  USB", TEAL), ("桥接固件", "7  OTA", TEAL)])
-            footer = "1–7 打开    F/X 选择    R 重连    长按 ESC 退出"
+            radios = [("CC1101", "1  Sub-GHz", TEAL), ("nRF24L01", "2  2.4 GHz", RADIOS[1][4]),
+                      ("LoRa", "3  SX127x", AMBER)] if self.use_usb else [
+                ("CC1101", "1  U219", TEAL), ("LoRa-1262", "2  U214", RADIOS[1][4]),
+                ("JosephCGS", "3  三合一诊断", AMBER)]
+            cards(radios + [("信号历史", "4  RF", TEAL), ("气象告警", "5  NWS", TEAL),
+                            ("硬件检测", "6  " + ("USB" if self.use_usb else "SPI"), TEAL),
+                            ("桥接固件", "7  OTA", TEAL) if self.use_usb else ("使用说明", "7  CAP", TEAL)])
+            footer = ("1–7 打开    F/X 选择    R 重连    长按 ESC 退出" if self.use_usb else
+                      "1–7 打开    F/X 选择    OK 确认    长按 ESC 退出")
+        elif self.page in ("cap", "cap-confirm"):
+            label, detail, actions = hat.CAPS[self.selected]
+            text(12, 8, label, 20, TEAL)
+            text(12, 37, detail, 13, DIM)
+            if self.page == "cap-confirm":
+                text(12, 64, actions[self.cap_choice][0], 15)
+                lines_at(88, ["确认顶部已装正确型号。", "退出官方应用后返回启动器。"])
+                footer = "Y 启动官方应用    ESC 返回"
+            else:
+                for i, (action, command) in enumerate(actions):
+                    y = 61 + i * 30
+                    if self.cap_choice == i:
+                        draw.rounded_rectangle((10, y, 309, y + 25), 4, fill=PANEL, outline=TEAL)
+                    text(18, y + 6, action, 14)
+                    text(210, y + 7, "已安装" if hat.available(command) else "未安装", 12, DIM)
+                footer = self.notice or "F/X 选择    OK 继续    ESC 返回"
+        elif self.page in ("hat", "joseph", "cap-help"):
+            titles = {"hat": "顶部接口检测", "joseph": "JosephCGS 三合一", "cap-help": "顶部扩展板"}
+            text(12, 8, titles[self.page], 20, TEAL)
+            if self.page == "cap-help":
+                lines_at(42, ["关机后安装或更换顶部扩展板。", "U219 和 U214 使用官方原生应用。",
+                              "三合一原板需改接控制线。", "按 3 查看现有引脚状态。"])
+            else:
+                stats = hat.summary(self.hat_data) if self.hat_data is not None else ["正在读取主机状态…"]
+                lines_at(40, stats)
+                if self.page == "joseph":
+                    text(12, 104, "nRF24 占用系统 I²C，CC1101 片选接 UART。", 12, AMBER)
+                    text(12, 123, "共用 SPI 的射频操作暂停，需改线。", 12, AMBER)
+                footer = "R 刷新    ESC 返回"
         elif self.page == "radio":
             text(12, 8, title, 20, color)
             text(135, 12, "<  " + profile + "  >", 14, TEXT)
@@ -633,7 +706,8 @@ class App:
                 raise OSError("CardputerZero keyboard missing or inaccessible")
             with open(find_fb(), "r+b", buffering=0) as dev:
                 with mmap.mmap(dev.fileno(), 320 * 170 * 2) as display:
-                    self.discover()
+                    if self.use_usb:
+                        self.discover()
                     while self.running:
                         self.poll()
                         now = time.monotonic()

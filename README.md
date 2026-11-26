@@ -1,6 +1,20 @@
 # Pocket RF OS
 
-Pocket RF OS（原 EtherDeck）是 Micius（M5Stack CardputerZero）的射频测试台。Micius 使用自身的 320×170 屏幕与键盘。一台 **Cardputer ADV + JosephCGS 三合一板**通过 USB 连接到 Micius，运行 Pocket RF OS 桥接固件来驱动三个模块。需要第二套兼容的设备才能验收双向通信。
+Pocket RF OS 是 CardputerZero 的 APPLaunch 应用。0.2.1 默认操作顶部 CAP 接口。
+
+| 顶部板 | 主页入口 |
+| --- | --- |
+| M5Stack Cap CC1101（U219） | 1 → SubG Chat 或 NFC。调用已安装的原厂原生应用。 |
+| M5Stack Cap LoRa-1262（U214） | 2 → LoRa 或 GPS。调用已安装的原厂原生应用。 |
+| JosephCGS ADV 三合一板 | 3 → 接线诊断。原板与 Zero 有 I²C 和 UART 引脚冲突，运行射频功能需先重新布线。 |
+
+先关机，再更换顶部扩展板。启动原厂工具前确认机身上的板与选择一致。Pocket RF OS 使用原厂应用现有的启动权限和驱动，原厂工具退出后返回 APPLaunch。原厂工具及驱动请从 CardputerZero 软件商店或其发行页安装。 [U219 SubG Chat](https://github.com/CardputerZero/Cap-CC1101-SubG-Chat/releases) · [U214 LoRa](https://github.com/CardputerZero/Cap-LoRa-1262/releases)
+
+[顶部接口兼容性与实测引脚](docs/top-cap.md)
+
+## 可选的 ADV USB 桥接模式
+
+已有独立 ADV 桥接器时，在 Micius 本机终端运行 `/usr/share/APPLaunch/bin/etherdeck --transport usb`。以下三模块功能适用于这个模式。
 
 | 模块 | 可用操作 |
 | --- | --- |
@@ -8,11 +22,11 @@ Pocket RF OS（原 EtherDeck）是 Micius（M5Stack CardputerZero）的射频测
 | nRF24L01 / nRF24L01+ | 芯片检测、2400–2483 MHz 信道活动柱状图、CH 02–80 测试消息。支持 1 和 2 Mbps，Plus 芯片另支持 250 kbps。活动图显示每个信道 8 次采样中检测到活动的次数。 |
 | LoRa（SX127x） | 芯片检测、RSSI 和 LoRa 信道活动检测、点对点测试消息、接收 RSSI / SNR。可选 433.50、868.30、915.00 MHz 和 SF7–12，带宽 125 kHz、编码率 4/5。 |
 
-发射前按模块铭牌、天线和当地规定选择频段。三个收发器一次只操作一个。测试消息最长 24 个 ASCII 字符，需要输入后按 Y 确认。接收窗口为 5 秒，识别 EtherDeck 测试消息。当前 LoRa 驱动面向参考引脚的 DIO0 型 SX127x。SX1262、LoRaWAN、Meshtastic 和 CardputerZero 直连 GPIO 均未适配。
+发射前按模块铭牌、天线和当地规定选择频段。三个收发器一次只操作一个。测试消息最长 24 个 ASCII 字符，需要输入后按 Y 确认。接收窗口为 5 秒，识别 EtherDeck 测试消息。当前 LoRa 驱动面向参考引脚的 DIO0 型 SX127x。这一 USB 桥接模式使用 SX127x。顶部 U214 的 SX1262 使用上面的原厂入口。
 
-## 0.2.0
+## 观测和告警
 
-三个模块都有「连续观测」。CC1101 和 nRF24 使用最近 20 帧画瀑布，LoRa 显示当前信号强度和信道活动。按 ESC 停止，按 S 保存最近一次测量到信号历史。历史保留最近 100 项，可以从主页用 **4** 浏览。
+USB 模式的三个模块都有「连续观测」。CC1101 和 nRF24 使用最近 20 帧画瀑布，LoRa 显示当前信号强度和信道活动。按 ESC 停止，按 S 保存最近一次测量到信号历史。历史保留最近 100 项，可以从主页用 **4** 浏览。
 
 主页 **5** 是 NWS 气象告警。按 C 输入美国州或地区代码，按 OK 查询。随后可以用 R 刷新。NET 表示当次请求成功，CACHE 表示从本地快照读取，超出 15 分钟会标记为旧。记录显示有效期，辅助查阅时请以官方通告为准。告警和历史存于 `$XDG_STATE_HOME/etherdeck`，默认是 `~/.local/state/etherdeck`。
 
@@ -20,17 +34,17 @@ Pocket RF OS（原 EtherDeck）是 Micius（M5Stack CardputerZero）的射频测
 
 ## 在 Micius 上安装
 
-从 [v0.2.0 Release](https://github.com/yksun/pocket-rf-os/releases/tag/v0.2.0) 下载 Debian 包。在能 SSH 到 Micius 的 Mac 上运行。Micius 重启后，先在机身上解锁，Tailscale 才会启动。
+从 [v0.2.1 Release](https://github.com/yksun/pocket-rf-os/releases/tag/v0.2.1) 下载 Debian 包。在能 SSH 到 Micius 的 Mac 上运行。Micius 重启后，先在机身上解锁，Tailscale 才会启动。
 
 ```bash
 stage=$(ssh micius 'd=$(mktemp -d /tmp/pocket-rf.XXXXXXXX) && chmod 755 "$d" && printf "%s" "$d"')
-scp etherdeck_0.2.0_all.deb "micius:$stage/" &&
-ssh -t micius "chmod 644 '$stage/etherdeck_0.2.0_all.deb' && sudo apt install '$stage/etherdeck_0.2.0_all.deb' && /usr/share/APPLaunch/bin/etherdeck --version && systemctl --user restart APPLaunch"
+scp etherdeck_0.2.1_all.deb "micius:$stage/" &&
+ssh -t micius "chmod 644 '$stage/etherdeck_0.2.1_all.deb' && sudo apt install '$stage/etherdeck_0.2.1_all.deb' && /usr/share/APPLaunch/bin/etherdeck --version && systemctl --user restart APPLaunch"
 ```
 
-启动器中选择 **Pocket RF OS**。如果 ADV 尚未刷好桥接固件，应用依然可以打开并浏览菜单。
+启动器中选择 **Pocket RF OS**。默认显示顶部扩展板入口；可选 USB 模式须显式启动。
 
-## ADV 首次刷写
+## 可选 USB 桥接器的 ADV 首次刷写
 
 先确认连接的是你的 **8 MB ESP32-S3 Cardputer ADV** 和与 JosephCGS 引脚相符的扩展板。刷写会替换 ADV 上当前引导和应用固件，先备份。整个过程只接一台 ESP32-S3 USB 设备，使用可传数据的 USB 线连接 Micius 的 USB 主机端。CC1101、LoRa 射频型号和频段以你的板子为准。
 
@@ -64,21 +78,21 @@ ssh -t micius "chmod 644 '$stage/etherdeck_0.2.0_all.deb' && sudo apt install '$
 4. 在 ADV 上按 **RST** 正常启动。回到 Micius 运行以下检测，或在应用主页按 R。先逐个模块做「检测模块」，再试扫描和两台之间的测试消息。
 
    ```bash
-   /usr/share/APPLaunch/bin/etherdeck --check
+   /usr/share/APPLaunch/bin/etherdeck --transport usb --check
    ```
 
 恢复旧固件时，在同一台 ADV 上重新进入下载模式，用保存的 **8 MB 原机备份**替换上述写入命令里的 `bootstrap.bin`，再按 RST。备份可能含有原设备的配置，请放在本机保管。
 
-## 后续桥接固件更新
+## 可选 USB 桥接固件更新
 
-装好含有新版桥接固件的 EtherDeck 应用包后，连接同一台 ADV。主页按 **U** 查看版本，按 **OK** 进入确认页，再按 **Y**。应用校验包内镜像 SHA-256、核对板型和设备身份，写入 ESP32 的备用应用分区。桥接端验证收到的镜像后才切换启动分区。程序重新连接并读到同一台设备的目标版本时才显示成功。正在运行 0.1.0 的桥接板可从 0.2.0 应用内升级。若应用包内版本已经与板上版本一致，界面仅显示版本。固件文件随应用包分发。
+装好含有新版桥接固件的 EtherDeck 应用包后，连接同一台 ADV 并启动 USB 模式。主页按 **U** 查看版本，按 **OK** 进入确认页，再按 **Y**。应用校验包内镜像 SHA-256、核对板型和设备身份，写入 ESP32 的备用应用分区。桥接端验证收到的镜像后才切换启动分区。程序重新连接并读到同一台设备的目标版本时才显示成功。正在运行 0.1.0 的桥接板可从 0.2.0 应用内升级。若应用包内版本已经与板上版本一致，界面仅显示版本。固件文件随应用包分发。
 
 ## 键位
 
 - **F / X** 或 **Fn+F / Fn+X** 上下选择，主页也可用 **1–7**。**OK** 打开或执行。
 - **Z / C** 或 **Fn+Z / Fn+C** 调整频率或信道，**B** 切换 nRF24 速率或 LoRa 扩频因子。
 - **短按 ESC** 返回，**长按 ESC** 退出。TAB 后再按 OK 保留给 Micius 的锁屏操作。
-- **R** 在主页重连，**U** 打开桥接固件，**H** 查看信号历史，**A** 打开气象告警，**D** 检测三模块。
+- **R** 在主页重连，**H** 查看信号历史，**A** 打开气象告警，**D** 查看当前接口状态。USB 模式下 **U** 打开桥接固件。
 
 ## 开发与参考
 

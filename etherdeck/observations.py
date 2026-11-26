@@ -7,11 +7,13 @@ import tempfile
 import time
 from urllib.request import Request, urlopen
 
+from . import VERSION
+
 HISTORY_LIMIT = 100
 ALERT_LIMIT = 25
 MAX_FILE = 1024 * 1024
 NWS = "https://api.weather.gov/alerts/active"
-USER_AGENT = "Pocket-RF-OS/0.2.0 (https://github.com/yksun/pocket-rf-os)"
+USER_AGENT = f"Pocket-RF-OS/{VERSION} (https://github.com/yksun/pocket-rf-os)"
 STATES = frozenset("AK AL AR AS AZ CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA MA MD ME MI MN MO MP MS MT NC ND NE NH NJ NM NV NY OH OK OR PA PR RI SC SD TN TX UT VA VI VT WA WI WV WY".split())
 
 

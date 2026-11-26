@@ -1,5 +1,7 @@
 # 0.2.0 设计核对
 
+0.2.1 改用顶部 CAP 作为默认模式。见 [顶部接口核对](top-cap.md)。
+
 | 报告主题 | 0.2.0 结果 |
 | --- | --- |
 | 硬件分层和板型 | Micius 是 Raspberry Pi CM0 Linux、320×170；ESP32-S3、240×135 对应 Cardputer 系列。此版 Micius 跑 APPLaunch，ADV 运行独立桥接固件，支持 JosephCGS 引脚。初代、v1.1、其他 PCB 型号需单独验证。 |

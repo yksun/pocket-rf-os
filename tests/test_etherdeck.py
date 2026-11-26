@@ -99,7 +99,7 @@ class ProtocolTests(unittest.TestCase):
 
 class InterfaceTests(unittest.TestCase):
     def test_keys_and_lock(self):
-        app = App()
+        app = App(usb=True)
         keypad = Keyboard(open_devices=False)
         keys = keypad.events([(389, 1), (45, 1), (45, 0), (389, 0)])
         for key in keys:
@@ -119,7 +119,7 @@ class InterfaceTests(unittest.TestCase):
         self.assertFalse(app.running)
 
     def test_channel_and_rate_keys_are_independent(self):
-        app = App()
+        app = App(usb=True)
         app.key("2", 1)
         app.key("LEFT", 2)
         self.assertEqual(app.profiles[1], 157)
@@ -129,7 +129,7 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(app.profiles[1], 158)
 
     def test_transmit_has_a_separate_confirmation(self):
-        app = App()
+        app = App(usb=True)
         app.key("3", 1)
         app.action = 3
         app.operate = Mock()
@@ -143,7 +143,7 @@ class InterfaceTests(unittest.TestCase):
         app.operate.assert_called_once_with("TX")
 
     def test_cc_315_transmit_is_unavailable(self):
-        app = App()
+        app = App(usb=True)
         app.key("1", 1)
         app.key("LEFT", 2)
         app.action = 3
@@ -158,7 +158,7 @@ class InterfaceTests(unittest.TestCase):
             result("NRF", "SCAN", "9 " * 84)
 
     def test_render_every_view(self):
-        app = App()
+        app = App(usb=True)
         app.usb = ("usb", "bridge-a", "0.0.1")
         for page in ("home", "radio", "compose", "send", "waiting", "result", "firmware",
                      "confirm-update", "updating", "firmware-result", "live",

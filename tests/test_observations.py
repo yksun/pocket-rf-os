@@ -56,7 +56,7 @@ class ObservationsTests(unittest.TestCase):
 
     def test_no_network_until_requested(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(observations, "fetch") as fetch:
-            app = App(storage=Path(tmp))
+            app = App(storage=Path(tmp), usb=True)
             app.key("5", 1)
             self.assertEqual(app.page, "alerts")
             fetch.assert_not_called()
@@ -68,7 +68,7 @@ class ObservationsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(bridge, "Bridge") as connect:
             link = connect.return_value.__enter__.return_value
             link.ask.return_value = "-105 " * 17
-            app = App(storage=Path(tmp))
+            app = App(storage=Path(tmp), usb=True)
             app.key("1", 1)
             app.key("f", 2)
             app.key("ENTER", 3)
