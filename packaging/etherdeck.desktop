@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Pocket RF OS
+Exec=/usr/share/APPLaunch/bin/etherdeck
+Icon=share/images/etherdeck_100.png
+Terminal=false
+Sysplause=true
+Type=Application
