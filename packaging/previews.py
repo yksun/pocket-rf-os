@@ -1,14 +1,16 @@
-"""Render labeled screenshots without opening the framebuffer or USB."""
+"""Render labeled screenshots without opening the framebuffer."""
 from pathlib import Path
 import time
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
-from etherdeck.app import App, font, result
+from etherdeck import hat
+from etherdeck.app import App, font
 
 root = Path(__file__).resolve().parent.parent
 app = App()
-app.usb_status, app.battery = "USB  ·  0.2.0", 76
+app.battery = 76
 
 
 def shot(name):
@@ -20,17 +22,11 @@ def shot(name):
     return screen
 
 
-screens = [shot("home")]
-app.go("live")
-for i in range(20):
-    values = [-106 + max(0, 54 - 8 * abs(col - (4 + i // 3))) for col in range(17)]
-    app.scan_summary = result("CC", "SCAN", " ".join(map(str, values)))
-    app.frames.append(app.scan_summary[2])
-screens.append(shot("waterfall"))
-app.go("history")
-app.observation(app.scan_summary)
-app.records = [app.sample]
-screens.append(shot("history"))
+app.confirmed_cap, app.home = 1, 2
+with patch.object(hat, "available", return_value=True):
+    screens = [shot("home")]
+app.key("1", 1)
+screens.append(shot("board-required"))
 app.go("alerts")
 now = int(time.time())
 app.alert_source = "CACHE"
@@ -39,7 +35,8 @@ app.alerts = {"area": "IL", "time": now, "total": 1, "alerts": [
      "expires": now + 5400, "sent": now}
 ]}
 screens.append(shot("alerts"))
-canvas = Image.new("RGB", (660, 360), "#0a1118")
+canvas = Image.new("RGB", (980, 180), "#0a1118")
 for i, screen in enumerate(screens):
-    canvas.paste(screen, (5 + 330 * (i % 2), 5 + 180 * (i // 2)))
-canvas.resize((1320, 720), Image.Resampling.NEAREST).save(root / "dist" / "pocket-rf-os-0.2.0-preview.png")
+    canvas.paste(screen, (5 + 325 * i, 5))
+(root / "dist").mkdir(exist_ok=True)
+canvas.resize((1960, 360), Image.Resampling.NEAREST).save(root / "dist" / "pocket-rf-os-0.3.3-preview.png")

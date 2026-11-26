@@ -6,9 +6,11 @@ import subprocess
 
 SPI = Path("/dev/spidev0.1")
 LED = Path("/sys/class/leds/ext_usb_gpio_fun/brightness")
+POWER = Path("/sys/class/leds/ext_5v_out/brightness")
 SUDO = ("/usr/bin/sudo", "-n", "--")
 BIN = "/usr/share/APPLaunch/bin"
 
+CAP_IDS = ("U219", "U214")
 CAPS = (
     ("Cap CC1101", "U219  ·  CC1101 + ST25R3916",
      (("Sub-GHz 聊天", (*SUDO, f"{BIN}/M5CardputerZero-Cap-CC1101-SubG-Chat")),
@@ -19,8 +21,24 @@ CAPS = (
 )
 
 
+def tool(index):
+    board, action = divmod(index, 2)
+    return CAPS[board][2][action]
+
+
+def tool_error(command):
+    return None if available(command) else "此功能所需的原厂工具未安装"
+
+
 def available(command):
     return all(os.access(path, os.X_OK) for path in (command[0], command[-1]))
+
+
+def port_mode():
+    try:
+        return {"0": "GPIO", "1": "USB"}.get(LED.read_text().strip(), "?")
+    except OSError:
+        return "?"
 
 
 def status():
@@ -37,12 +55,13 @@ def status():
         if match:
             pins[int(match[1])] = match[2]
     try:
-        mode = {"0": "GPIO", "1": "USB"}.get(LED.read_text().strip(), "?")
+        power = {"0": "关闭", "1": "开启"}.get(POWER.read_text().strip(), "未知")
     except OSError:
-        mode = "?"
+        power = "未知"
     return {
+        "5v": power,
         "spi": os.access(SPI, os.R_OK | os.W_OK),
-        "mode": mode,
+        "mode": port_mode(),
         "pins": pins,
     }
 
@@ -53,4 +72,5 @@ def summary(snapshot):
         f"SPI0.1  {'可访问' if snapshot['spi'] else '不可访问'}    HAT  {snapshot['mode']}",
         f"G2 / G3   {pins.get(2, '?')} / {pins.get(3, '?')}",
         f"G14 / G15   {pins.get(14, '?')} / {pins.get(15, '?')}",
+        f"顶部 5V   {snapshot['5v']}",
     ]

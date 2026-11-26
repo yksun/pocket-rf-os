@@ -1,4 +1,4 @@
-"""Bounded RF observations and opt-in NWS alert snapshots."""
+"""Bounded opt-in NWS alert snapshots."""
 from datetime import datetime, timezone
 import json
 import os
@@ -9,7 +9,6 @@ from urllib.request import Request, urlopen
 
 from . import VERSION
 
-HISTORY_LIMIT = 100
 ALERT_LIMIT = 25
 MAX_FILE = 1024 * 1024
 NWS = "https://api.weather.gov/alerts/active"
@@ -40,25 +39,6 @@ def write(path, value):
             os.replace(staged, path)
         finally:
             staged.unlink(missing_ok=True)
-
-
-def record(radio, profile, title, detail, samples):
-    return {"source": "RF", "time": int(time.time()), "radio": radio, "profile": profile,
-            "title": title, "detail": detail, "samples": samples}
-
-
-def history(path):
-    saved = read(path, [])
-    if not isinstance(saved, list):
-        return []
-    return [r for r in saved[:HISTORY_LIMIT] if isinstance(r, dict)
-            and r.get("source") == "RF" and isinstance(r.get("time"), int)
-            and 0 <= r["time"] < 4102444800
-            and all(isinstance(r.get(k), str) for k in ("radio", "profile", "title", "detail"))]
-
-
-def save(path, sample):
-    write(path, [sample, *history(path)][:HISTORY_LIMIT])
 
 
 def parse_time(value):

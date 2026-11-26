@@ -1,9 +1,8 @@
 import tempfile
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import Mock, patch
 
-from etherdeck import bridge, observations
+from etherdeck import observations
 from etherdeck.app import App, font, wrap_alert
 from etherdeck.keys import Keyboard
 
@@ -42,15 +41,10 @@ class ReleaseTests(TestCase):
         self.assertTrue(all(font(11).getlength(line) <= 296 for line in lines))
         self.assertEqual("".join(lines), "一" * 300)
 
-    def test_bridge_profiles_have_distinct_images(self):
-        old = bridge.pack(bridge.PROFILE)
-        new = bridge.pack(bridge.TOP_PROFILE)
-        self.assertNotEqual(old[2], new[2])
-
-    def test_update_rejects_wrong_board_before_writing(self):
-        link = Mock(identity="board", version="0.2.0", profile=bridge.PROFILE)
-        with (patch.object(bridge, "Bridge") as connect,
-              self.assertRaisesRegex(bridge.BridgeError, "changed")):
-            connect.return_value.__enter__.return_value = link
-            bridge.update("port", "board", "0.2.0", Mock(), profile=bridge.TOP_PROFILE)
-        link.ask.assert_not_called()
+    def test_tab_then_ok_stays_reserved_for_system_lock(self):
+        app = App()
+        for key, tick in (("TAB_DOWN", 1), ("TAB_UP", 1.1), ("ENTER", 1.2)):
+            app.key(key, tick)
+        self.assertEqual(app.page, "home")
+        app.key("ENTER", 3)
+        self.assertEqual(app.page, "cap-confirm")

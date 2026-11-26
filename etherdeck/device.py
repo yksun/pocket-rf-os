@@ -30,8 +30,11 @@ def health():
 
 
 def package_integrity():
-    report = subprocess.run(["dpkg", "--verify", "etherdeck"],
-                            capture_output=True, text=True, timeout=5, check=False)
+    try:
+        report = subprocess.run(["dpkg", "--verify", "etherdeck"],
+                                capture_output=True, text=True, timeout=5, check=False)
+    except subprocess.TimeoutExpired:
+        return "无法完成安装包校验", "校验超时"
     if report.returncode:
         return "无法完成安装包校验", (report.stderr or report.stdout).strip().split("\n")[-1][:100]
     matches = report.stdout.strip().splitlines()
